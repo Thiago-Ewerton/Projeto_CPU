@@ -1,48 +1,64 @@
-// =============================================================================
-// RAM — 16 x 16-bit Synchronous Memory with Asynchronous Active-Low Reset
-// =============================================================================
-// Behavior:
-//   - Reset (active-low, async) : clears all 16 positions to zero
-//   - Write (sync, on posedge)  : stores data_in at address
-//   - Read  (sync, on posedge)  : latches address into address_reg
-//   - Output                    : combinational read from address_reg
-// =============================================================================
+// ============================================================================
+// Módulo: memoria16_16
+// Descrição: Banco de registradores/RAM contendo 16 posições de 16 bits cada.
+//            Controlado por uma máquina de estados/comandos simples.
+// ============================================================================
 
-module RAM (
-    input             clk,        // Clock
-    input             reset,      // Asynchronous reset, active-low
-    input             write,      // Write enable
-    input             read,       // Read enable (latches address)
-    input      [3:0]  address,    // 4-bit address (16 positions)
-    input      [15:0] data_in,    // Data to write
-    output     [15:0] data_out    // Data read output
+module memoria16_16 (
+    input wire        clk,          // Clock do sistema
+    input wire [1:0]  estado_modo,  // Seleciona o estado: 00=Read, 01=Write, 10=Clear
+    input wire [3:0]  addr_rd1,     // Endereço de leitura do Registrador 1 (Src1)
+    input wire [3:0]  addr_rd2,     // Endereço de leitura do Registrador 2 (Src2)
+    input wire [3:0]  addr_wr,      // Endereço de escrita do Registrador (Destino)
+    input wire [15:0] data_in,      // Dado de entrada a ser salvo (ULA ou Imediato)
+    
+    output reg [15:0] data_out1,    // Saída do dado do Registrador 1 para a ULA
+    output reg [15:0] data_out2     // Saída do dado do Registrador 2 para a ULA
 );
 
+    // 1. Criação da matriz de memória
+    reg [15:0] registradores [0:15];
+
+    // 2. Definição dos Estados 
+    localparam STATE_READ  = 2'b00;
+    localparam STATE_WRITE = 2'b01;
+    localparam STATE_CLEAR = 2'b10;
+
+    // Variável de controle interna para o laço de repetição de limpeza
     integer i;
-    reg [15:0] ram_block  [0:15]; // 16 words of 16 bits
-    reg [3:0]  address_reg;       // Registered read address
 
-    // -------------------------------------------------------------------------
-    // Write port — synchronous write, asynchronous active-low reset
-    // -------------------------------------------------------------------------
-    always @(posedge clk or negedge reset) begin
-        if (!reset) begin
-            for (i = 0; i < 16; i = i + 1)
-                ram_block[i] <= 16'd0;
-            address_reg <= 4'd0;
-        end
-        else begin
-            if (write)
-                ram_block[address] <= data_in;
+    // 3. Lógica Sequencial da Máquina de Estados da Memória
+    always @(posedge clk) begin
+        case (estado_modo)
+            
+            STATE_READ: begin
+                
+                // Busca os valores guardados nos endereços solicitados e joga nas saídas
+                data_out1 <= registradores[addr_rd1];
+                data_out2 <= registradores[addr_rd2];
+            end
 
-            if (read)
-                address_reg <= address;
-        end
+            STATE_WRITE: begin
+                
+                // Grava o valor de 'data_in' na posição indicada por 'addr_wr'
+                registradores[addr_wr] <= data_in;
+            end
+
+            STATE_CLEAR: begin
+                
+                // Zera a memoria com um for 
+                for (i = 0; i < 16; i = i + 1) begin
+                    registradores[i] <= 16'h0000;
+                end
+            end
+
+            default: begin
+                // Estado Neutro: 
+                data_out1 <= 16'h0000;
+                data_out2 <= 16'h0000;
+            end
+            
+        endcase
     end
-
-    // -------------------------------------------------------------------------
-    // Read port — combinational, driven by registered address
-    // -------------------------------------------------------------------------
-    assign data_out = ram_block[address_reg];
 
 endmodule
