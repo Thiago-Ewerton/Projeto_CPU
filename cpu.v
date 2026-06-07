@@ -1,11 +1,10 @@
 module cpu (
-	
-	 // Entradas Físicas (Placa)
+    // Entradas Físicas (Placa)
     input clk,
     input power,        // Botão Ligar/Desligar
     input enviar,       // Botão Enviar
 
-    // Switches divididos para facilitar a codificação (Baseado nas imagens do PDF)
+    // Switches
     input [2:0] opcode,           // 3 bits para a operação
     input [3:0] reg_um,           // 4 bits (Geralmente o Destino)
     input [3:0] reg_dois,         // 4 bits (Geralmente a Fonte 1)
@@ -16,63 +15,154 @@ module cpu (
     output RS,
     output RW,
     output enable,
+	 output lcd_on,      
+    output lcd_blon     
+);
+    
+    reg signed [6:0] imd;
+    
+    // Sinais de controle internos para ligar na RAM e ULA
+    reg [3:0] addr_rd1, addr_rd2, addr_wr;
+    reg [15:0] dado_para_memoria;
+    reg [1:0] estado_modo_mem;
+	 reg lcd_start;
+    wire lcd_ocupado;
+    
+    wire signed [15:0] resultado_ula;
+    reg signed [15:0] ula_operando_b;
+    
+    wire [15:0] data_out1_mem, data_out2_mem;
+	 assign lcd_on = 1'b1;    // Display sempre energizado
+    assign lcd_blon = 1'b1;  // Luz sempre acesa
 
-    // Comunicação com a Memória (memory.v)
-    output [3:0] endereco_memoria, // Exatamente os 4 bits que você mencionou (acessa os 16 locais)
-    output [15:0] dado_para_memoria, // Os 16 bits do valor a ser guardado no local
-    output mem_write_enable,      // 1 bit para dizer à memória se é operação de Escrita (1) ou Leitura (0)
-    input [15:0] dado_da_memoria, // 16 bits do valor devolvido pela memória após uma leitura
+    // Parâmetros dos Opcodes (Instruções)
+    parameter load    = 3'b000,
+              add     = 3'b001,
+              addi    = 3'b010,
+              sub     = 3'b011,
+              subi    = 3'b100,
+              mul     = 3'b101,
+              clear   = 3'b110,
+              display = 3'b111;
+                    
+    // Parâmetros dos Estados da FSM
+    parameter espera        = 3'd0,
+              ler_ram       = 3'd1,
+              acessar_ula   = 3'd2,
+              escrever_ram  = 3'd3,
+              atualizar_lcd = 3'd4;
+                    
+    reg [2:0] estado = espera;
+    
+    reg enviar_anterior;
+    wire enviar_solto = (enviar_anterior == 1'b0 && enviar == 1'b1);
+    
+ 
+    always @ (*) begin
+        if (opcode == load || opcode == addi || opcode == subi || opcode == mul) begin
+            imd = reg_tres_ou_imm[6:0];
+            addr_rd2 = 4'b0000;
+        end else begin
+            imd = 7'b0000000;
+            addr_rd2 = reg_tres_ou_imm[3:0];
+        end 
+    end
+    
+    always @ (posedge clk) begin
+        enviar_anterior <= enviar; 
+        
+        if (power == 1'b0) begin
+            estado <= espera;
+            estado_modo_mem <= 2'b10;
+        end 
+        else begin
+            case(estado) 
+                espera: begin
+                    if(enviar_solto) begin
+                        
+                        estado <= ler_ram;
+                        if(opcode == clear)
+                            estado_modo_mem <= 2'b10; 
+                    end
+                    else begin
+                        estado <= espera;
+                    end
+                end
+                
+                ler_ram: begin
+                    addr_rd1 <= reg_dois;  
+                    estado_modo_mem <= 2'b00;       
+                    estado <= acessar_ula;
+                end
+                
+                acessar_ula: begin
+                    if (opcode == addi || opcode == subi || opcode == mul)
+                        ula_operando_b <= {{9{imd[6]}}, imd}; 
+                    else
+                        ula_operando_b <= data_out2_mem;
+                    
+                    estado <= escrever_ram;
+                end
+                
+                escrever_ram: begin
+                    addr_wr <= reg_um;
+                    if(opcode == load)
+                        dado_para_memoria <= {{9{imd[6]}}, imd}; 
+                    
+                    if(opcode == add || opcode == addi || opcode == sub || opcode == subi || opcode == mul)
+                        dado_para_memoria <= resultado_ula; 
+                        
+                    estado_modo_mem <= 2'b01;
+						  lcd_start <= 1'b1;
+                    estado <= atualizar_lcd;  
+                end
+                
+                atualizar_lcd: begin
+                   estado_modo_mem <= 2'b00; 
+                    lcd_start <= 1'b0;
+                    if (lcd_ocupado == 1'b0) begin
+                        estado <= espera;
+                    end
+                end
+                
+                default: estado <= espera;
+            endcase
+        end
+    end
+    
+    
+    memoria16_16 registrar (
+        .clk(clk),
+        .estado_modo(estado_modo_mem),
+        .addr_rd1(addr_rd1),
+        .addr_rd2(addr_rd2),
+        .addr_wr(addr_wr),
+        .data_in(dado_para_memoria),   
+        .data_out1(data_out1_mem),
+        .data_out2(data_out2_mem)
+    );
 
-    // Comunicação com a ULA (module_alu.v)
-    output [15:0] ula_operando_1, // 16 bits enviados para o primeiro operando da conta
-    output [15:0] ula_operando_2, // 16 bits enviados para o segundo operando da conta
-    output [2:0] ula_seletor,     // O próprio opcode repassado para a ULA saber qual conta fazer
-    input  [15:0] ula_resultado    // 16 bits com o resultado da conta feita pela ULA
+    ULA operar (
+        .operand_a(data_out1_mem),  
+        .operand_b(ula_operando_b),  
+        .opcode(opcode),             
+        .result(resultado_ula)         
+    );
 	 
-	 );
-	
-	reg sinal;
-	reg [5:0] imd;
-	reg [3:0] acessar_endereco;
-	
-	parameter  load    = 3'b000,
-				add     = 3'b001,
-				addi    = 3'b010,
-				sub     = 3'b011,
-				subi    = 3'b100,
-				mul     = 3'b101,
-				clear   = 3'b110,
-				display = 3'b111;
-	
-	always @ (negedge clk, negedge enviar) begin
-		case (opcode)
-			   load:  begin
-					sinal = reg_tres_ou_imm[6];
-					imd 	= reg_tres_ou_imm[5:0];
-				end
-				
-				add: acessar_endereco = reg_tres_ou_imm[6:3];
-				
-				addi: begin
-					sinal = reg_tres_ou_imm[6];
-					imd 	= reg_tres_ou_imm[5:0];
-				end
-				
-				sub: acessar_endereco = reg_tres_ou_imm[6:3];
-				
-				subi:  begin
-					sinal = reg_tres_ou_imm[6];
-					imd 	= reg_tres_ou_imm[5:0];
-				end
-				
-				mul:  begin
-					sinal = reg_tres_ou_imm[6];
-					imd 	= reg_tres_ou_imm[5:0];
-				end
-				
-				clear:;
-				display:;
-		endcase
-	end
+	 wire rst_lcd = ~power; 
 
+    lcd_controller_top tela_placa (
+        .clk(clk),
+        .rst(rst_lcd),
+        .start(lcd_start),             
+        .opcode(opcode),               
+        .addr_wr(addr_wr),            
+        .dado_ula(resultado_ula),      
+        .ocupado(lcd_ocupado),         
+        
+        .lcd_data(lcd_dados),          
+        .lcd_rs(RS),                   
+        .lcd_rw(RW),                   
+        .lcd_e(enable)                 
+    );
 endmodule
