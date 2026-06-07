@@ -1,11 +1,16 @@
-// =============================================================
-// Control Unit — Decodes opcode and drives all control signals
-// =============================================================
+// =============================================================================
+// Control Unit — Decodes 3-bit opcode into datapath control signals
+// =============================================================================
+// Operation types:
+//   Type A (addr_sel = 0) : operand_a = RAM[address_a], operand_b = RAM[address_b]
+//   Type B (addr_sel = 1) : operand_a = RAM[address_a], operand_b = immediate
+// =============================================================================
+
 module control_unit (
-    input      [2:0] opcode,    // Instruction opcode
-    output reg       ram_read,  // Enable RAM read
-    output reg       ram_write, // Enable RAM write
-    output reg       imm_sel    // 0 = operand_b from RAM, 1 = from immediate
+    input      [2:0] opcode,      // 3-bit instruction opcode
+    output reg       ram_read,    // RAM read enable
+    output reg       ram_write,   // RAM write enable
+    output reg       addr_sel     // 0 = both from RAM, 1 = operand_b from immediate
 );
 
     localparam [2:0]
@@ -22,18 +27,24 @@ module control_unit (
         // Safe defaults
         ram_read  = 1'b0;
         ram_write = 1'b0;
-        imm_sel   = 1'b0;
+        addr_sel  = 1'b0;
 
         case (opcode)
-            OP_LOAD    : imm_sel   = 1'b1;  // operand_b = immediate
-            OP_ADD     : ram_read  = 1'b1;  // operand_b = RAM
-            OP_ADDI    : imm_sel   = 1'b1;  // operand_b = immediate
-            OP_SUB     : ram_read  = 1'b1;  // operand_b = RAM
-            OP_SUBI    : imm_sel   = 1'b1;  // operand_b = immediate
-            OP_MUL     : imm_sel   = 1'b1;  // operand_b = immediate
-            OP_CLEAR   : ram_write = 1'b1;  // writes zero via ALU result
-            OP_DISPLAY : ram_read  = 1'b1;  // reads value to display
-            default    : ;                  // all signals stay 0
+            // Type A — both operands from RAM
+            OP_LOAD    : ram_read  = 1'b1;
+            OP_ADD     : ram_read  = 1'b1;
+            OP_SUB     : ram_read  = 1'b1;
+            OP_DISPLAY : ram_read  = 1'b1;
+
+            // Type B — operand_a from RAM, operand_b from immediate
+            OP_ADDI    : begin ram_read = 1'b1; addr_sel = 1'b1; end
+            OP_SUBI    : begin ram_read = 1'b1; addr_sel = 1'b1; end
+            OP_MUL     : begin ram_read = 1'b1; addr_sel = 1'b1; end
+
+            // Special — write zero back to RAM
+            OP_CLEAR   : ram_write = 1'b1;
+
+            default    : ;
         endcase
     end
 
