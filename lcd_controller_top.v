@@ -118,10 +118,17 @@ module lcd_controller_top (
 
         // Endereço [XXXX] alinhado à extrema direita da primeira linha 
         message[11] = {1'b1, 8'h5B}; // Colchete '['
-        message[12] = {1'b1, latched_addr[3] ? 8'h31 : 8'h30}; 
-        message[13] = {1'b1, latched_addr[2] ? 8'h31 : 8'h30};
-        message[14] = {1'b1, latched_addr[1] ? 8'h31 : 8'h30};
-        message[15] = {1'b1, latched_addr[0] ? 8'h31 : 8'h30};
+        if (latched_opcode == 4'd8) begin
+            message[12] = {1'b1, 8'h2D}; // Traço '-'
+            message[13] = {1'b1, 8'h2D}; // Traço '-'
+            message[14] = {1'b1, 8'h2D}; // Traço '-'
+            message[15] = {1'b1, 8'h2D}; // Traço '-'
+        end else begin
+            message[12] = {1'b1, latched_addr[3] ? 8'h31 : 8'h30}; 
+            message[13] = {1'b1, latched_addr[2] ? 8'h31 : 8'h30};
+            message[14] = {1'b1, latched_addr[1] ? 8'h31 : 8'h30};
+            message[15] = {1'b1, latched_addr[0] ? 8'h31 : 8'h30};
+        end
         message[16] = {1'b1, 8'h5D}; // Colchete ']'
 
         // --- COMANDO DE PULAR LINHA (Agora no índice 17) ---
