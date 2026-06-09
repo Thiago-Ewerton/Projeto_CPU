@@ -20,7 +20,7 @@ module cpu (
 );
     
     reg signed [15:0] imd;
-    
+	 
     // Sinais de controle internos para ligar na RAM e ULA
     reg [3:0] addr_rd1, addr_rd2, addr_wr;
     reg signed [15:0] dado_para_memoria;
@@ -46,18 +46,25 @@ module cpu (
               display = 3'b111;
                     
     // Parâmetros dos Estados da FSM
-    parameter desligado		 = 3'd0,
+    parameter off				 = 3'd0,
 				  espera        = 3'd1,
               ler_ram       = 3'd2,
               acessar_ula   = 3'd3,
               escrever_ram  = 3'd4,
               atualizar_lcd = 3'd5;
                     
-    reg [2:0] estado = desligado;
+    reg [2:0] estado = off;
     
-    reg enviar_anterior, power_anterior;
+    reg enviar_anterior;
     wire enviar_solto = (enviar_anterior == 1'b0 && enviar == 1'b1);
-    wire power_solto  = (power_anterior == 1'b0 && power == 1'b1);
+    
+	 
+	 reg desligado = 1'b1;
+	 
+	 always @ (posedge power) begin
+			desligado <= ~desligado;
+	 end
+	 
  
     always @ (*) begin
         if (opcode == load || opcode == addi || opcode == subi || opcode == mul) begin
@@ -75,14 +82,15 @@ module cpu (
     end
     
     always @ (posedge clk) begin
-		   enviar_anterior <= enviar; 
-		   power_anterior <= power;
-			case(estado)
-				 desligado: begin
-						if(power_solto)
-							estado <= espera;
+         enviar_anterior <= enviar; 
+			case(estado) 
+				 off: begin
+						if(desligado) begin
+							estado <= off;
+							estado_modo_mem <= 2'b10;
+						end
 						else
-							estado <= desligado;
+							estado <= espera;
 				 end
 				 espera: begin
 					  if(enviar_solto) begin
@@ -94,10 +102,10 @@ module cpu (
 					  else begin
 							estado <= espera;
 					  end
-					  
-					  if (power_solto)
-							estado <= desligado;
+					  if(desligado) begin
+							estado <= off;
 							estado_modo_mem <= 2'b10;
+						end
 				 end
 				 
 				 ler_ram: begin
@@ -191,7 +199,8 @@ module cpu (
         .lcd_data(lcd_dados),          
         .lcd_rs(RS),                   
         .lcd_rw(RW),                   
-        .lcd_e(enable)                 
+        .lcd_e(enable),
+		  .display_on(power)
     );
 
 endmodule
