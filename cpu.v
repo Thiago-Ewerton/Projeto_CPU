@@ -46,17 +46,18 @@ module cpu (
               display = 3'b111;
                     
     // Parâmetros dos Estados da FSM
-    parameter espera        = 3'd0,
-              ler_ram       = 3'd1,
-              acessar_ula   = 3'd2,
-              escrever_ram  = 3'd3,
-              atualizar_lcd = 3'd4;
+    parameter desligado		 = 3'd0,
+				  espera        = 3'd1,
+              ler_ram       = 3'd2,
+              acessar_ula   = 3'd3,
+              escrever_ram  = 3'd4,
+              atualizar_lcd = 3'd5;
                     
-    reg [2:0] estado = espera;
+    reg [2:0] estado = desligado;
     
-    reg enviar_anterior;
+    reg enviar_anterior, power_anterior;
     wire enviar_solto = (enviar_anterior == 1'b0 && enviar == 1'b1);
-    
+    wire power_solto  = (power_anterior == 1'b0 && power == 1'b1);
  
     always @ (*) begin
         if (opcode == load || opcode == addi || opcode == subi || opcode == mul) begin
@@ -74,83 +75,87 @@ module cpu (
     end
     
     always @ (posedge clk) begin
-        enviar_anterior <= enviar; 
-        
-        if (power == 1'b0) begin
-            estado <= espera;
-            estado_modo_mem <= 2'b10;
-        end 
-        else begin
-            case(estado) 
-                espera: begin
-                    if(enviar_solto) begin
-                        
-                        estado <= ler_ram;
-                        if(opcode == clear)
-                            estado_modo_mem <= 2'b10; 
-                    end
-                    else begin
-                        estado <= espera;
-                    end
-                end
-                
-                ler_ram: begin
-                    
-						  if(opcode == display)
-								addr_rd1 <= reg_um;
-						  else
-								addr_rd1 <= reg_dois;
-                    estado_modo_mem <= 2'b00;       
-                    estado <= acessar_ula;
-                end
-                
-                acessar_ula: begin
-                    if (opcode == addi || opcode == subi || opcode == mul)
-                        ula_operando_b <= imd; 
-                    else
-                        ula_operando_b <= data_out2_mem;
-                    
-                    estado <= escrever_ram;
-                end
-                
-                escrever_ram: begin
-                    addr_wr <= reg_um;
-                    if(opcode == load)
-                        dado_para_memoria <= imd; 
-                    
-                    if(opcode == add || opcode == addi || opcode == sub || opcode == subi || opcode == mul)
-                        dado_para_memoria <= resultado_ula;
+		   enviar_anterior <= enviar; 
+		   power_anterior <= power;
+			case(estado)
+				 desligado: begin
+						if(power_solto)
+							estado <= espera;
+						else
+							estado <= desligado;
+				 end
+				 espera: begin
+					  if(enviar_solto) begin
 							
+							estado <= ler_ram;
 							if(opcode == clear)
-								dado_para_memoria <= 16'sh0000;
-                        
-                    if(opcode == display)
-                        dado_para_memoria <= data_out1_mem;
-                        
-                    if(opcode == display)
-                        estado_modo_mem <= 2'b00;
-                    else
-                        estado_modo_mem <= 2'b01;
-								
-						  lcd_start <= 1'b1;
-                    estado <= atualizar_lcd;  
-                end
-                
-                atualizar_lcd: begin
-                  estado_modo_mem <= 2'b00; 
-                
-                    if (lcd_ocupado == 1'b1) begin
-                        lcd_start <= 1'b0;
-                    end
-						  
-                    if (lcd_start == 1'b0 && lcd_ocupado == 1'b0) begin
-                        estado <= espera;
-                    end
-                end
-                
-                default: estado <= espera;
-            endcase
-        end
+								 estado_modo_mem <= 2'b10; 
+					  end
+					  else begin
+							estado <= espera;
+					  end
+					  
+					  if (power_solto)
+							estado <= desligado;
+							estado_modo_mem <= 2'b10;
+				 end
+				 
+				 ler_ram: begin
+					  
+					  if(opcode == display)
+							addr_rd1 <= reg_um;
+					  else
+							addr_rd1 <= reg_dois;
+					  estado_modo_mem <= 2'b00;       
+					  estado <= acessar_ula;
+				 end
+				 
+				 acessar_ula: begin
+					  if (opcode == addi || opcode == subi || opcode == mul)
+							ula_operando_b <= imd; 
+					  else
+							ula_operando_b <= data_out2_mem;
+					  
+					  estado <= escrever_ram;
+				 end
+				 
+				 escrever_ram: begin
+					  addr_wr <= reg_um;
+					  if(opcode == load)
+							dado_para_memoria <= imd; 
+					  
+					  if(opcode == add || opcode == addi || opcode == sub || opcode == subi || opcode == mul)
+							dado_para_memoria <= resultado_ula;
+						
+						if(opcode == clear)
+							dado_para_memoria <= 16'sh0000;
+							
+					  if(opcode == display)
+							dado_para_memoria <= data_out1_mem;
+							
+					  if(opcode == display)
+							estado_modo_mem <= 2'b00;
+					  else
+							estado_modo_mem <= 2'b01;
+							
+					  lcd_start <= 1'b1;
+					  estado <= atualizar_lcd;  
+				 end
+				 
+				 atualizar_lcd: begin
+					estado_modo_mem <= 2'b00; 
+				 
+					  if (lcd_ocupado == 1'b1) begin
+							lcd_start <= 1'b0;
+					  end
+					  
+					  if (lcd_start == 1'b0 && lcd_ocupado == 1'b0) begin
+							estado <= espera;
+					  end
+				 end
+				 
+				 default: estado <= espera;
+			endcase
     end
     
     
