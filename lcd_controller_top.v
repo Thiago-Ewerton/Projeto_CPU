@@ -1,228 +1,213 @@
-module lcd_controller_top (
-    input  wire        clk,
-    input  wire        rst,
-    
-    // Conexão com a CPU
-    input  wire        start,     
-    input  wire [2:0]  opcode,    // Recebe a operação (3 bits)
-    input  wire [3:0]  addr_wr,   // Recebe o endereço do registrador
-    input  wire [15:0] dado_ula,  
-    output wire        ocupado,
+module cpu (
+    // Entradas Físicas (Placa)
+    input clk,
+    input power,        // Botão Ligar/Desligar
+    input enviar,       // Botão Enviar
 
-    // Saídas para o LCD físico da Placa
-    output wire  [7:0] lcd_data,
-    output wire        lcd_rs,
-    output wire        lcd_rw,
-    output wire        lcd_e,
-	 
-	input 			  	  display_on
-	 
+    // Switches
+    input [2:0] opcode,           // 3 bits para a operação
+    input [3:0] reg_um,           // 4 bits (Geralmente o Destino)
+    input [3:0] reg_dois,         // 4 bits (Geralmente a Fonte 1)
+    input [6:0] reg_tres_ou_imm,  // 7 bits (Pode ser o Reg 3 [3:0] ou o Sinal + Imediato [6:0])
+
+    // Saídas Físicas (Para controlar o LCD da Placa)
+    output [7:0] lcd_dados,
+    output RS,
+    output RW,
+    output enable,
+	 output lcd_on,      
+    output lcd_blon,     
+	 output reg [15:0] saida_result
 );
+    
+    reg signed [15:0] imd;
+	 
+    // Sinais de controle internos para ligar na RAM e ULA
+    reg [3:0] addr_rd1, addr_rd2, addr_wr;
+    reg signed [15:0] dado_para_memoria;
+    reg [1:0] estado_modo_mem;
+	 reg lcd_start;
+    wire lcd_ocupado;
+    
+    wire signed [15:0] resultado_ula;
+    reg signed [15:0] ula_operando_b;
+    
+    wire [15:0] data_out1_mem, data_out2_mem;
+	 assign lcd_on = 1'b1;    // Display sempre energizado
+    assign lcd_blon = 1'b1;  // Luz sempre acesa
 
-    // -----------------------------------------------------------------------
-    // Instância do módulo de inicialização (MANTIDO DO ORIGINAL)
-    // -----------------------------------------------------------------------
-    wire [7:0] init_data;
-    wire       init_rs;
-    wire       init_rw;
-    wire       init_e;
-    wire       init_done;
-    reg        start_init; 
+    // Parâmetros dos Opcodes (Instruções)
+    parameter load    = 3'b000,
+              add     = 3'b001,
+              addi    = 3'b010,
+              sub     = 3'b011,
+              subi    = 3'b100,
+              mul     = 3'b101,
+              clear   = 3'b110,
+              display = 3'b111;
+                    
+    // Parâmetros dos Estados da FSM
+    parameter off				 = 3'd0,
+				  espera        = 3'd1,
+              ler_ram       = 3'd2,
+              acessar_ula   = 3'd3,
+              escrever_ram  = 3'd4,
+              atualizar_lcd = 3'd5;
+                    
+    reg [2:0] estado = off;
+    
+    reg enviar_anterior, power_anterior;
+    wire power_acionado = (power_anterior == 1'b1 && power == 1'b0); 
+	 wire enviar_solto   = (enviar_anterior == 1'b1 && enviar == 1'b0);
+    
+	 reg desligado = 1'b1;
+	 
+ 
+    always @ (*) begin
+        if (opcode == load || opcode == addi || opcode == subi || opcode == mul) begin
+        // Tradução de Sinal-Magnitude para Complemento de Dois (16 bits)
+        if (reg_tres_ou_imm[6] == 1'b1) begin
+            imd = -{10'b0, reg_tres_ou_imm[5:0]}; // Sinal negativo
+        end else begin
+            imd = {10'b0, reg_tres_ou_imm[5:0]};  // Sinal positivo
+        end
+			  addr_rd2 = 4'b0000;
+		 end else begin
+			  imd = 16'sd0;
+			  addr_rd2 = reg_tres_ou_imm[6:3];
+		 end
+				saida_result <= dado_para_memoria;
+	end
 
-    lcd_init_hd44780 lcd_init (
-        .clk      (clk),
-        .rst      (rst),
-        .start    (start_init),
-        .done     (init_done),
-        .lcd_data (init_data),
-        .lcd_rs   (init_rs),
-        .lcd_rw   (init_rw),
-        .lcd_e    (init_e)
+    
+    always @ (posedge clk) begin
+         enviar_anterior <= enviar;
+			power_anterior <= power;
+   
+			if (power_acionado) begin
+				desligado <= ~desligado;
+			end
+			
+			case(estado) 
+				 off: begin
+						lcd_start <= 1'b0;
+						if(desligado) begin
+							estado <= off;
+							estado_modo_mem <= 2'b10;
+						end
+						else
+							estado <= espera;
+							lcd_start <= 1'b1;
+				 end
+				 espera: begin
+					  if(enviar_solto) begin
+							
+							estado <= ler_ram;
+							if(opcode == clear)
+								 estado_modo_mem <= 2'b10; 
+					  end
+					  else begin
+							estado <= espera;
+					  end
+					  if(desligado) begin
+							estado <= off;
+							estado_modo_mem <= 2'b10;
+						end
+				 end
+				 
+				 ler_ram: begin
+					  
+					  if(opcode == display)
+							addr_rd1 <= reg_um;
+					  else
+							addr_rd1 <= reg_dois;
+					  estado_modo_mem <= 2'b00;       
+					  estado <= acessar_ula;
+				 end
+				 
+				 acessar_ula: begin
+					  if (opcode == addi || opcode == subi || opcode == mul)
+							ula_operando_b <= imd; 
+					  else
+							ula_operando_b <= data_out2_mem;
+					  
+					  estado <= escrever_ram;
+				 end
+				 
+				 escrever_ram: begin
+					  addr_wr <= reg_um;
+					  if(opcode == load)
+							dado_para_memoria <= imd; 
+					  
+					  if(opcode == add || opcode == addi || opcode == sub || opcode == subi || opcode == mul)
+							dado_para_memoria <= resultado_ula;
+						
+						if(opcode == clear)
+							dado_para_memoria <= 16'sh0000;
+							
+					  if(opcode == display)
+							dado_para_memoria <= data_out1_mem;
+							
+					  if(opcode == display)
+							estado_modo_mem <= 2'b00;
+					  else
+							estado_modo_mem <= 2'b01;
+							
+					  lcd_start <= 1'b1;
+					  estado <= atualizar_lcd;  
+				 end
+				 
+				 atualizar_lcd: begin
+					estado_modo_mem <= 2'b00; 
+				 
+					  if (lcd_ocupado == 1'b1) begin
+							lcd_start <= 1'b0;
+					  end
+					  
+					  if (lcd_start == 1'b0 && lcd_ocupado == 1'b0) begin
+							estado <= espera;
+					  end
+				 end
+				 
+				 default: estado <= espera;
+			endcase
+    end
+    
+    
+    memoria16_16 registrar (
+        .clk(clk),
+        .estado_modo(estado_modo_mem),
+        .addr_rd1(addr_rd1),
+        .addr_rd2(addr_rd2),
+        .addr_wr(addr_wr),
+        .data_in(dado_para_memoria),   
+        .data_out1(data_out1_mem),
+        .data_out2(data_out2_mem)
     );
 
-    wire controller_mode = init_done;
-    assign lcd_data = (controller_mode == 0) ? init_data : wr_data;
-    assign lcd_rs   = (controller_mode == 0) ? init_rs   : wr_rs;
-    assign lcd_rw   = (controller_mode == 0) ? init_rw   : wr_rw;
-    assign lcd_e    = (controller_mode == 0) ? init_e    : wr_e;
+    ULA operar (
+        .operand_a(data_out1_mem),  
+        .operand_b(ula_operando_b),  
+        .opcode(opcode),             
+        .result(resultado_ula)         
+    );
 	 
-	 reg ligado = 1'b0;
-	 
-	 always @ (posedge display_on) begin
-			ligado <= ~ligado;
-	 end
+	 wire rst_lcd = desligado; 
 
-    // -----------------------------------------------------------------------
-    // Formatação de Mensagem (Decimal, Opcode e 2 Linhas)
-    // -----------------------------------------------------------------------
-	 localparam integer MSG_LEN = 35; 
-	 reg [8:0] message [0:MSG_LEN-1];
-    
-    // Registradores para salvar os dados no momento do gatilho
-    reg [15:0] latched_dado; 
-    reg [3:0]  latched_opcode;
-    reg [3:0]  latched_addr;
-
-    // 1. Decodificador de Opcode para Texto
-    // Corrigido: Expandido para 56 bits (7 caracteres de 8 bits) para evitar truncamento
-   reg [55:0] op_str;
-    always @(*) begin
-        case (latched_opcode)
-            4'd0: op_str = "LOAD   ";
-            4'd1: op_str = "ADD    ";
-            4'd2: op_str = "ADDI   ";
-            4'd3: op_str = "SUB    ";
-            4'd4: op_str = "SUBI   ";
-            4'd5: op_str = "MUL    ";
-            4'd6: op_str = "CLEAR  ";
-            4'd7: op_str = "DISPLAY";
-            4'd8: op_str = "----   ";
-            default: op_str = "UNK    ";
-        endcase
-    end
-
-    // 2. Extrator de Sinal e Valor Absoluto para Decimal
-    wire [15:0] abs_val = (latched_dado[15]) ? (~latched_dado + 16'd1) : latched_dado;
-    wire [7:0] char_sign = (latched_dado[15]) ? 8'h2D : 8'h2B; // Hex 2D='-', 2B='+'
-
-    // 3. Função para extrair os dígitos decimais
-    function [7:0] get_digit;
-        input [15:0] value;
-        input [2:0] digit_idx;
-        reg [15:0] temp;
-        begin
-            case (digit_idx)
-                0: temp = (value % 10);
-                1: temp = (value / 10) % 10;
-                2: temp = (value / 100) % 10;
-                3: temp = (value / 1000) % 10;
-                4: temp = (value / 10000) % 10; // Adicionado: Suporte a números de até 5 dígitos (Dezena de Milhar)
-                default: temp = 0;
-            endcase
-            get_digit = temp[7:0] + 8'h30; // Soma com 0x30 para virar ASCII
-        end
-    endfunction
-
-   // 4. Montagem do Quebra-cabeça na Tela
-    integer i;
-    always @(*) begin
-        // Zera a tela inteira com "Espaços" por padrão (1'b1 = Texto, 8'h20 = Espaço)
-        for (i = 0; i < MSG_LEN; i = i + 1) begin
-            message[i] = {1'b1, 8'h20}; 
-        end
-          
-        message[0] = {1'b0, ligado ? 8'h0C : 8'h08};
-
-        // --- COMANDO DE RETORNAR AO INÍCIO DA LINHA 1 ---
-        message[1] = {1'b0, 8'h80};
-
-        // --- LINHA 1: Nome completo ---
-        message[2] = {1'b1, op_str[55:48]}; // Letra 1
-        message[3] = {1'b1, op_str[47:40]}; // Letra 2
-        message[4] = {1'b1, op_str[39:32]}; // Letra 3
-        message[5] = {1'b1, op_str[31:24]}; // Letra 4
-        message[6] = {1'b1, op_str[23:16]}; // Letra 5
-        message[7] = {1'b1, op_str[15:8]};  // Letra 6
-        message[8] = {1'b1, op_str[7:0]};   // Letra 7
-         
-        // --- COMANDO DE PULAR LINHA (RETIRADO DO IF) ---
-        // Sempre envia o comando para a Linha 2. Se for CLEAR, as posições seguintes 
-        // serão os espaços em branco (8'h20) gerados pelo laço 'for' acima.
-        message[18] = {1'b0, 8'hC0}; 
-
-        if(op_str != "CLEAR  ") begin
-            // Endereço [XXXX] 
-            message[12] = {1'b1, 8'h5B}; // Colchete '['
-            if (latched_opcode == 4'd8) begin
-                 message[13] = {1'b1, 8'h2D}; // Traço '-'
-                 message[14] = {1'b1, 8'h2D}; // Traço '-'
-                 message[15] = {1'b1, 8'h2D}; // Traço '-'
-                 message[16] = {1'b1, 8'h2D}; // Traço '-'
-            end else begin
-                 message[13] = {1'b1, latched_addr[3] ? 8'h31 : 8'h30}; 
-                 message[14] = {1'b1, latched_addr[2] ? 8'h31 : 8'h30};
-                 message[15] = {1'b1, latched_addr[1] ? 8'h31 : 8'h30};
-                 message[16] = {1'b1, latched_addr[0] ? 8'h31 : 8'h30};
-            end
-            message[17] = {1'b1, 8'h5D}; // Colchete ']'
-
-            // --- LINHA 2: Sinal e valor ---
-            message[29] = {1'b1, char_sign};             // Sinal (+ ou -) 
-            message[30] = {1'b1, get_digit(abs_val, 4)}; // Dezena de Milhar
-            message[31] = {1'b1, get_digit(abs_val, 3)}; // Milhar
-            message[32] = {1'b1, get_digit(abs_val, 2)}; // Centena
-            message[33] = {1'b1, get_digit(abs_val, 1)}; // Dezena
-            message[34] = {1'b1, get_digit(abs_val, 0)}; // Unidade
-        end
-    end
-
-    // -----------------------------------------------------------------------
-    // Temporizações e Estados
-    // -----------------------------------------------------------------------
-    localparam [31:0] DELAY_WRITE = 32'd2000;  // ~40 us
-    localparam [31:0] DELAY_PULSE = 32'd50;    // ~1 us
-
-    localparam [2:0] S_WAIT_INIT = 3'd0, S_IDLE = 3'd1, S_PREPARE = 3'd2, S_PULSE_E = 3'd3, S_WAIT = 3'd4, S_DONE = 3'd5;
+    lcd_controller_top tela_placa (
+        .clk(clk),
+        .rst(rst_lcd),
+        .start(lcd_start),             
+        .opcode(opcode),               
+        .addr_wr(addr_wr),            
+        .dado_ula(dado_para_memoria),      
+        .ocupado(lcd_ocupado),         
         
-    reg [2:0]  state, next_state;
-    reg [31:0] delay_cnt, next_delay_cnt;
-    reg [5:0]  msg_index, next_msg_index; 
+        .lcd_data(lcd_dados),          
+        .lcd_rs(RS),                   
+        .lcd_rw(RW),                   
+        .lcd_e(enable),
+		  .display_on(power)
+    );
 
-    assign ocupado = (start || state == S_WAIT_INIT || state == S_PREPARE || state == S_PULSE_E || state == S_WAIT);
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            state          <= S_WAIT_INIT;
-            delay_cnt      <= 32'd0;
-            msg_index      <= 6'd0;
-            latched_dado   <= 16'd0;
-            latched_opcode <= 4'd8;     
-            latched_addr   <= 4'd0;
-        end else begin
-            state        <= next_state;
-            delay_cnt    <= next_delay_cnt;
-            msg_index    <= next_msg_index;
-            
-            if (state == S_IDLE && start) begin
-                latched_dado   <= dado_ula;
-                latched_opcode <= {1'b0, opcode};
-                latched_addr   <= addr_wr;
-            end
-        end
-    end
-
-    always @(*) begin
-        next_state     = state;
-        next_delay_cnt = delay_cnt;
-        next_msg_index = msg_index;
-
-        case (state)
-            
-            S_WAIT_INIT: if (init_done) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
-            
-            S_IDLE:      if (start) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
-            S_PREPARE:   begin next_state = S_PULSE_E; next_delay_cnt = DELAY_PULSE; end
-            S_PULSE_E:   if (delay_cnt > 0) next_delay_cnt = delay_cnt - 1; else begin next_state = S_WAIT; next_delay_cnt = DELAY_WRITE; end
-            S_WAIT:      if (delay_cnt > 0) next_delay_cnt = delay_cnt - 1; else if (msg_index == (MSG_LEN-1)) next_state = S_DONE; else begin next_msg_index = msg_index + 1; next_state = S_PREPARE; end
-            S_DONE:      next_state = S_IDLE; 
-            default:     begin next_state = S_WAIT_INIT; next_delay_cnt = 32'd0; next_msg_index = 6'd0; end
-        endcase
-    end
-
-    // -----------------------------------------------------------------------
-    // Sinais Físicos
-    // -----------------------------------------------------------------------
-    reg [7:0] wr_data; reg wr_rs; reg wr_rw; reg wr_e;
-
-    always @(*) begin
-        start_init = (state == S_WAIT_INIT) ? 1'b1 : 1'b0;
-        wr_data = 8'h00; wr_rs = 1'b0; wr_rw = 1'b0; wr_e  = 1'b0;
-        
-        case (state)
-            S_PREPARE: begin wr_data = message[msg_index][7:0]; wr_rs = message[msg_index][8]; wr_rw = 1'b0; wr_e = 1'b0; end
-            S_PULSE_E: begin wr_data = message[msg_index][7:0]; wr_rs = message[msg_index][8]; wr_rw = 1'b0; wr_e = 1'b1; end
-            S_WAIT:    begin wr_data = message[msg_index][7:0]; wr_rs = message[msg_index][8]; wr_rw = 1'b0; wr_e = 1'b0; end
-            default:   begin wr_rs = 1'b0; wr_rw = 1'b0; wr_e = 1'b0; wr_data = 8'h00; end
-        endcase
-    end
 endmodule
