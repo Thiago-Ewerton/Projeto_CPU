@@ -15,7 +15,7 @@ module cpu (
     output RS,
     output RW,
     output enable,
-	output lcd_on,      
+	 output lcd_on,      
     output lcd_blon     
 );
     
