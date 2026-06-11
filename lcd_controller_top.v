@@ -19,9 +19,7 @@ module lcd_controller_top (
 	 
 );
 
-    // -----------------------------------------------------------------------
-    // Instância do módulo de inicialização (MANTIDO DO ORIGINAL)
-    // -----------------------------------------------------------------------
+    // Instância do módulo de inicialização
     wire [7:0] init_data;
     wire       init_rs;
     wire       init_rw;
@@ -52,9 +50,7 @@ module lcd_controller_top (
 			ligado <= ~ligado;
 	 end
 
-    // -----------------------------------------------------------------------
     // Formatação de Mensagem (Decimal, Opcode e 2 Linhas)
-    // -----------------------------------------------------------------------
 	 localparam integer MSG_LEN = 35; 
 	 reg [8:0] message [0:MSG_LEN-1];
     
@@ -64,7 +60,7 @@ module lcd_controller_top (
     reg [3:0]  latched_addr;
 
     // 1. Decodificador de Opcode para Texto
-    // Corrigido: Expandido para 56 bits (7 caracteres de 8 bits) para evitar truncamento
+    // Expandido para 56 bits (7 caracteres de 8 bits) para evitar truncamento
    reg [55:0] op_str;
     always @(*) begin
         case (latched_opcode)
@@ -96,7 +92,7 @@ module lcd_controller_top (
                 1: temp = (value / 10) % 10;
                 2: temp = (value / 100) % 10;
                 3: temp = (value / 1000) % 10;
-                4: temp = (value / 10000) % 10; // Adicionado: Suporte a números de até 5 dígitos (Dezena de Milhar)
+                4: temp = (value / 10000) % 10;
                 default: temp = 0;
             endcase
             get_digit = temp[7:0] + 8'h30; // Soma com 0x30 para virar ASCII
@@ -113,10 +109,10 @@ module lcd_controller_top (
           
         message[0] = {1'b0, ligado ? 8'h0C : 8'h08};
 
-        // --- COMANDO DE RETORNAR AO INÍCIO DA LINHA 1 ---
+        // Comando para retornar ao inicio da linha 1
         message[1] = {1'b0, 8'h80};
 
-        // --- LINHA 1: Nome completo ---
+        // LINHA 1: Nome da Operação escolhida
         message[2] = {1'b1, op_str[55:48]}; // Letra 1
         message[3] = {1'b1, op_str[47:40]}; // Letra 2
         message[4] = {1'b1, op_str[39:32]}; // Letra 3
@@ -125,9 +121,8 @@ module lcd_controller_top (
         message[7] = {1'b1, op_str[15:8]};  // Letra 6
         message[8] = {1'b1, op_str[7:0]};   // Letra 7
          
-        // --- COMANDO DE PULAR LINHA (RETIRADO DO IF) ---
-        // Sempre envia o comando para a Linha 2. Se for CLEAR, as posições seguintes 
-        // serão os espaços em branco (8'h20) gerados pelo laço 'for' acima.
+        // COMANDO DE PULAR LINHA (RETIRADO DO IF)
+        // Sempre envia o comando para a Linha 2. Se for CLEAR, as posições seguintes serão os espaços em branco (8'h20) gerados pelo laço 'for' acima.
         message[18] = {1'b0, 8'hC0}; 
 
         if(op_str != "CLEAR  ") begin
@@ -146,7 +141,7 @@ module lcd_controller_top (
             end
             message[17] = {1'b1, 8'h5D}; // Colchete ']'
 
-            // --- LINHA 2: Sinal e valor ---
+            // LINHA 2: Sinal e valor
             message[29] = {1'b1, char_sign};             // Sinal (+ ou -) 
             message[30] = {1'b1, get_digit(abs_val, 4)}; // Dezena de Milhar
             message[31] = {1'b1, get_digit(abs_val, 3)}; // Milhar
@@ -156,9 +151,7 @@ module lcd_controller_top (
         end
     end
 
-    // -----------------------------------------------------------------------
     // Temporizações e Estados
-    // -----------------------------------------------------------------------
     localparam [31:0] DELAY_WRITE = 32'd2000;  // ~40 us
     localparam [31:0] DELAY_PULSE = 32'd50;    // ~1 us
 
@@ -195,11 +188,12 @@ module lcd_controller_top (
         next_state     = state;
         next_delay_cnt = delay_cnt;
         next_msg_index = msg_index;
-
+		
         case (state)
-            
+        	//Mudança dos Estados
+			//Inicial
             S_WAIT_INIT: if (init_done) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
-            
+            //
             S_IDLE:      if (start) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
             S_PREPARE:   begin next_state = S_PULSE_E; next_delay_cnt = DELAY_PULSE; end
             S_PULSE_E:   if (delay_cnt > 0) next_delay_cnt = delay_cnt - 1; else begin next_state = S_WAIT; next_delay_cnt = DELAY_WRITE; end
@@ -208,10 +202,8 @@ module lcd_controller_top (
             default:     begin next_state = S_WAIT_INIT; next_delay_cnt = 32'd0; next_msg_index = 6'd0; end
         endcase
     end
-
-    // -----------------------------------------------------------------------
+	
     // Sinais Físicos
-    // -----------------------------------------------------------------------
     reg [7:0] wr_data; reg wr_rs; reg wr_rw; reg wr_e;
 
     always @(*) begin
