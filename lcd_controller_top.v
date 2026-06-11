@@ -195,6 +195,7 @@ module lcd_controller_top (
 
     assign ocupado = (start || state == S_WAIT_INIT || state == S_PREPARE || state == S_PULSE_E || state == S_WAIT);
 
+	//Registrador de Captura de Entrada
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state          <= S_WAIT_INIT;
@@ -216,6 +217,7 @@ module lcd_controller_top (
         end
     end
 
+	//Bloco Combinacional dos Estados
     always @(*) begin
         next_state     = state;
         next_delay_cnt = delay_cnt;
