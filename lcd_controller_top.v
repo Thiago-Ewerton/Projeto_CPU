@@ -225,12 +225,43 @@ module lcd_controller_top (
 		
         case (state)
         	//Mudança dos Estados
-            S_WAIT_INIT: if (init_done) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
-            S_IDLE:      if (start) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
-            S_PREPARE:   begin next_state = S_PULSE_E; next_delay_cnt = DELAY_PULSE; end
-            S_PULSE_E:   if (delay_cnt > 0) next_delay_cnt = delay_cnt - 1; else begin next_state = S_WAIT; next_delay_cnt = DELAY_WRITE; end
-            S_WAIT:      if (delay_cnt > 0) next_delay_cnt = delay_cnt - 1; else if (msg_index == (MSG_LEN-1)) next_state = S_DONE; else begin next_msg_index = msg_index + 1; next_state = S_PREPARE; end
-            S_DONE:      next_state = S_IDLE; 
+            S_WAIT_INIT: 
+				if (init_done) begin
+					next_state = S_PREPARE; 
+					next_msg_index = 6'd0; 
+				end
+            S_IDLE:
+				if (start) begin 
+					next_state = S_PREPARE; 
+					next_msg_index = 6'd0; 
+				end
+			
+            S_PREPARE:   
+				begin 
+					next_state = S_PULSE_E; 
+					next_delay_cnt = DELAY_PULSE; 
+				end
+            S_PULSE_E:   
+				if (delay_cnt > 0) begin
+					next_delay_cnt = delay_cnt - 1;
+				end
+				else begin 
+					next_state = S_WAIT; 
+					next_delay_cnt = DELAY_WRITE; 
+				end
+            S_WAIT:      
+				if (delay_cnt > 0) begin 
+					next_delay_cnt = delay_cnt - 1;
+				end 
+				else if (msg_index == (MSG_LEN-1)) begin 
+					next_state = S_DONE;
+				end
+				else begin 
+					next_msg_index = msg_index + 1; 
+					next_state = S_PREPARE; 
+				end
+            S_DONE:      
+				next_state = S_IDLE; 
             default:     begin next_state = S_WAIT_INIT; next_delay_cnt = 32'd0; next_msg_index = 6'd0; end
         endcase
     end
