@@ -7,18 +7,19 @@ module lcd_controller_top (
     input  wire [2:0]  opcode,    // Recebe a operação (3 bits)
     input  wire [3:0]  addr_wr,   // Recebe o endereço do registrador
     input  wire [15:0] dado_ula,  
-    output wire        ocupado,   
+    output wire        ocupado,
 
     // Saídas para o LCD físico da Placa
     output wire  [7:0] lcd_data,
     output wire        lcd_rs,
     output wire        lcd_rw,
-    output wire        lcd_e
+    output wire        lcd_e,
+	 
+	input 			  	  display_on
+	 
 );
 
-    // -----------------------------------------------------------------------
-    // Instância do módulo de inicialização (MANTIDO DO ORIGINAL)
-    // -----------------------------------------------------------------------
+    // Instância do módulo de inicialização
     wire [7:0] init_data;
     wire       init_rs;
     wire       init_rw;
@@ -42,13 +43,16 @@ module lcd_controller_top (
     assign lcd_rs   = (controller_mode == 0) ? init_rs   : wr_rs;
     assign lcd_rw   = (controller_mode == 0) ? init_rw   : wr_rw;
     assign lcd_e    = (controller_mode == 0) ? init_e    : wr_e;
+	 
+	 reg ligado = 1'b0;
+	 
+	 always @ (posedge display_on) begin
+			ligado <= ~ligado;
+	 end
 
-    // -----------------------------------------------------------------------
     // Formatação de Mensagem (Decimal, Opcode e 2 Linhas)
-    // -----------------------------------------------------------------------
-    localparam integer MSG_LEN = 34; 
-    
-    reg [8:0] message [0:MSG_LEN-1]; 
+	 localparam integer MSG_LEN = 35; 
+	 reg [8:0] message [0:MSG_LEN-1];
     
     // Registradores para salvar os dados no momento do gatilho
     reg [15:0] latched_dado; 
@@ -56,7 +60,7 @@ module lcd_controller_top (
     reg [3:0]  latched_addr;
 
     // 1. Decodificador de Opcode para Texto
-    // Corrigido: Expandido para 56 bits (7 caracteres de 8 bits) para evitar truncamento
+    // Expandido para 56 bits (7 caracteres de 8 bits) para evitar truncamento
    reg [55:0] op_str;
     always @(*) begin
         case (latched_opcode)
@@ -88,64 +92,66 @@ module lcd_controller_top (
                 1: temp = (value / 10) % 10;
                 2: temp = (value / 100) % 10;
                 3: temp = (value / 1000) % 10;
-                4: temp = (value / 10000) % 10; // Adicionado: Suporte a números de até 5 dígitos (Dezena de Milhar)
+                4: temp = (value / 10000) % 10;
                 default: temp = 0;
             endcase
             get_digit = temp[7:0] + 8'h30; // Soma com 0x30 para virar ASCII
         end
     endfunction
 
-    // 4. Montagem do Quebra-cabeça na Tela
-   integer i;
+   // 4. Montagem do Quebra-cabeça na Tela
+    integer i;
     always @(*) begin
         // Zera a tela inteira com "Espaços" por padrão (1'b1 = Texto, 8'h20 = Espaço)
         for (i = 0; i < MSG_LEN; i = i + 1) begin
             message[i] = {1'b1, 8'h20}; 
         end
-        
-        // --- NOVO: COMANDO DE RETORNAR AO INÍCIO DA LINHA 1 ---
-        // 8'h80 = Set DDRAM Address para 0x00. RS = 0 (1'b0) para indicar comando.
-        message[0] = {1'b0, 8'h80};
+          
+        message[0] = {1'b0, ligado ? 8'h0C : 8'h08};
 
-        // --- LINHA 1: Nome completo alinhado à esquerda, Endereço à direita ---
-        message[1] = {1'b1, op_str[55:48]}; // Letra 1 do Opcode
-        message[2] = {1'b1, op_str[47:40]}; // Letra 2
-        message[3] = {1'b1, op_str[39:32]}; // Letra 3
-        message[4] = {1'b1, op_str[31:24]}; // Letra 4
-        message[5] = {1'b1, op_str[23:16]}; // Letra 5
-        message[6] = {1'b1, op_str[15:8]};  // Letra 6
-        message[7] = {1'b1, op_str[7:0]};   // Letra 7
+        // Comando para retornar ao inicio da linha 1
+        message[1] = {1'b0, 8'h80};
 
-        // Endereço [XXXX] alinhado à extrema direita da primeira linha 
-        message[11] = {1'b1, 8'h5B}; // Colchete '['
-        if (latched_opcode == 4'd8) begin
-            message[12] = {1'b1, 8'h2D}; // Traço '-'
-            message[13] = {1'b1, 8'h2D}; // Traço '-'
-            message[14] = {1'b1, 8'h2D}; // Traço '-'
-            message[15] = {1'b1, 8'h2D}; // Traço '-'
-        end else begin
-            message[12] = {1'b1, latched_addr[3] ? 8'h31 : 8'h30}; 
-            message[13] = {1'b1, latched_addr[2] ? 8'h31 : 8'h30};
-            message[14] = {1'b1, latched_addr[1] ? 8'h31 : 8'h30};
-            message[15] = {1'b1, latched_addr[0] ? 8'h31 : 8'h30};
+        // LINHA 1: Nome da Operação escolhida
+        message[2] = {1'b1, op_str[55:48]}; // Letra 1
+        message[3] = {1'b1, op_str[47:40]}; // Letra 2
+        message[4] = {1'b1, op_str[39:32]}; // Letra 3
+        message[5] = {1'b1, op_str[31:24]}; // Letra 4
+        message[6] = {1'b1, op_str[23:16]}; // Letra 5
+        message[7] = {1'b1, op_str[15:8]};  // Letra 6
+        message[8] = {1'b1, op_str[7:0]};   // Letra 7
+         
+        // COMANDO DE PULAR LINHA (RETIRADO DO IF)
+        // Sempre envia o comando para a Linha 2. Se for CLEAR, as posições seguintes serão os espaços em branco (8'h20) gerados pelo laço 'for' acima.
+        message[18] = {1'b0, 8'hC0}; 
+
+        if(op_str != "CLEAR  ") begin
+            // Endereço [XXXX] 
+            message[12] = {1'b1, 8'h5B}; // Colchete '['
+            if (latched_opcode == 4'd8) begin
+                 message[13] = {1'b1, 8'h2D}; // Traço '-'
+                 message[14] = {1'b1, 8'h2D}; // Traço '-'
+                 message[15] = {1'b1, 8'h2D}; // Traço '-'
+                 message[16] = {1'b1, 8'h2D}; // Traço '-'
+            end else begin
+                 message[13] = {1'b1, latched_addr[3] ? 8'h31 : 8'h30}; 
+                 message[14] = {1'b1, latched_addr[2] ? 8'h31 : 8'h30};
+                 message[15] = {1'b1, latched_addr[1] ? 8'h31 : 8'h30};
+                 message[16] = {1'b1, latched_addr[0] ? 8'h31 : 8'h30};
+            end
+            message[17] = {1'b1, 8'h5D}; // Colchete ']'
+
+            // LINHA 2: Sinal e valor
+            message[29] = {1'b1, char_sign};             // Sinal (+ ou -) 
+            message[30] = {1'b1, get_digit(abs_val, 4)}; // Dezena de Milhar
+            message[31] = {1'b1, get_digit(abs_val, 3)}; // Milhar
+            message[32] = {1'b1, get_digit(abs_val, 2)}; // Centena
+            message[33] = {1'b1, get_digit(abs_val, 1)}; // Dezena
+            message[34] = {1'b1, get_digit(abs_val, 0)}; // Unidade
         end
-        message[16] = {1'b1, 8'h5D}; // Colchete ']'
-
-        // --- COMANDO DE PULAR LINHA (Agora no índice 17) ---
-        message[17] = {1'b0, 8'hC0}; 
-
-        // --- LINHA 2: Sinal e valor numérico alinhados à extrema direita ---
-        message[28] = {1'b1, char_sign};             // Sinal (+ ou -) 
-        message[29] = {1'b1, get_digit(abs_val, 4)}; // Dezena de Milhar
-        message[30] = {1'b1, get_digit(abs_val, 3)}; // Milhar
-        message[31] = {1'b1, get_digit(abs_val, 2)}; // Centena
-        message[32] = {1'b1, get_digit(abs_val, 1)}; // Dezena
-        message[33] = {1'b1, get_digit(abs_val, 0)}; // Unidade
     end
 
-    // -----------------------------------------------------------------------
     // Temporizações e Estados
-    // -----------------------------------------------------------------------
     localparam [31:0] DELAY_WRITE = 32'd2000;  // ~40 us
     localparam [31:0] DELAY_PULSE = 32'd50;    // ~1 us
 
@@ -182,11 +188,10 @@ module lcd_controller_top (
         next_state     = state;
         next_delay_cnt = delay_cnt;
         next_msg_index = msg_index;
-
+		
         case (state)
-            
+        	//Mudança dos Estados
             S_WAIT_INIT: if (init_done) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
-            
             S_IDLE:      if (start) begin next_state = S_PREPARE; next_msg_index = 6'd0; end
             S_PREPARE:   begin next_state = S_PULSE_E; next_delay_cnt = DELAY_PULSE; end
             S_PULSE_E:   if (delay_cnt > 0) next_delay_cnt = delay_cnt - 1; else begin next_state = S_WAIT; next_delay_cnt = DELAY_WRITE; end
@@ -195,10 +200,8 @@ module lcd_controller_top (
             default:     begin next_state = S_WAIT_INIT; next_delay_cnt = 32'd0; next_msg_index = 6'd0; end
         endcase
     end
-
-    // -----------------------------------------------------------------------
+	
     // Sinais Físicos
-    // -----------------------------------------------------------------------
     reg [7:0] wr_data; reg wr_rs; reg wr_rw; reg wr_e;
 
     always @(*) begin
