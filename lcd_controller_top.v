@@ -102,10 +102,42 @@ module lcd_controller_top (
    // 4. Montagem do Quebra-cabeça na Tela
     integer i;
     always @(*) begin
-        // Zera a tela inteira com "Espaços" por padrão (1'b1 = Texto, 8'h20 = Espaço)
-        for (i = 0; i < MSG_LEN; i = i + 1) begin
-            message[i] = {1'b1, 8'h20}; 
-        end
+        // Zera a tela inteira com "Espaços" por padrão
+            message[0]  = {1'b1, 8'h20};
+			message[1]  = {1'b1, 8'h20};
+			message[2]  = {1'b1, 8'h20};
+			message[3]  = {1'b1, 8'h20};
+			message[4]  = {1'b1, 8'h20};
+			message[5]  = {1'b1, 8'h20};
+			message[6]  = {1'b1, 8'h20};
+			message[7]  = {1'b1, 8'h20};
+			message[8]  = {1'b1, 8'h20};
+			message[9]  = {1'b1, 8'h20};
+			message[10] = {1'b1, 8'h20};
+			message[11] = {1'b1, 8'h20};
+			message[12] = {1'b1, 8'h20};
+			message[13] = {1'b1, 8'h20};
+			message[14] = {1'b1, 8'h20};
+			message[15] = {1'b1, 8'h20};
+			message[16] = {1'b1, 8'h20};
+			message[17] = {1'b1, 8'h20};
+			message[18] = {1'b1, 8'h20};
+			message[19] = {1'b1, 8'h20};
+			message[20] = {1'b1, 8'h20};
+			message[21] = {1'b1, 8'h20};
+			message[22] = {1'b1, 8'h20};
+			message[23] = {1'b1, 8'h20};
+			message[24] = {1'b1, 8'h20};
+			message[25] = {1'b1, 8'h20};
+			message[26] = {1'b1, 8'h20};
+			message[27] = {1'b1, 8'h20};
+			message[28] = {1'b1, 8'h20};
+			message[29] = {1'b1, 8'h20};
+			message[30] = {1'b1, 8'h20};
+			message[31] = {1'b1, 8'h20};
+			message[32] = {1'b1, 8'h20};
+			message[33] = {1'b1, 8'h20};
+			message[34] = {1'b1, 8'h20};
           
         message[0] = {1'b0, ligado ? 8'h0C : 8'h08};
 
