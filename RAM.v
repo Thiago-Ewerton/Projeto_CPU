@@ -24,9 +24,6 @@ module memoria16_16 (
     localparam STATE_WRITE = 2'b01;
     localparam STATE_CLEAR = 2'b10;
 
-    // Variável de controle interna para o laço de repetição de limpeza
-    integer i;
-
     // 3. Lógica Sequencial da Máquina de Estados da Memória
     always @(posedge clk) begin
         case (estado_modo)
