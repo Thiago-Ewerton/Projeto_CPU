@@ -46,10 +46,23 @@ module memoria16_16 (
 
             STATE_CLEAR: begin
                 
-                // Zera a memoria com um for 
-                for (i = 0; i < 16; i = i + 1) begin
-                    registradores[i] <= 16'h0000;
-                end
+                // Zera a memoria
+                    registradores[0]  <= 16'h0000;
+                    registradores[1]  <= 16'h0000;
+                    registradores[2]  <= 16'h0000;
+                    registradores[3]  <= 16'h0000;
+                    registradores[4]  <= 16'h0000;
+                    registradores[5]  <= 16'h0000;
+                    registradores[6]  <= 16'h0000;
+                    registradores[7]  <= 16'h0000;
+                    registradores[8]  <= 16'h0000;
+                    registradores[9]  <= 16'h0000;
+                    registradores[10] <= 16'h0000;
+                    registradores[11] <= 16'h0000;
+                    registradores[12] <= 16'h0000;
+                    registradores[13] <= 16'h0000;
+                    registradores[14] <= 16'h0000;
+                    registradores[15] <= 16'h0000;
             end
 
             default: begin
