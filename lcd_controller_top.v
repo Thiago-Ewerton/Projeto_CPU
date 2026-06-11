@@ -235,7 +235,6 @@ module lcd_controller_top (
 					next_state = S_PREPARE; 
 					next_msg_index = 6'd0; 
 				end
-			
             S_PREPARE:   
 				begin 
 					next_state = S_PULSE_E; 
