@@ -90,7 +90,7 @@ module lcd_init_hd44780 (
                 end
             end
 
-            // Espera inicial de power-on
+			// Espera inicial (cerca de 15 milissegundos)
             S_POWER_WAIT: begin
                 if (delay_cnt > 0) begin
                     next_delay_cnt = delay_cnt - 1;
