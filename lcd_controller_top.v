@@ -230,11 +230,6 @@ module lcd_controller_top (
 					next_state = S_PREPARE; 
 					next_msg_index = 6'd0; 
 				end
-            S_IDLE:
-				if (start) begin 
-					next_state = S_PREPARE; 
-					next_msg_index = 6'd0; 
-				end
             S_PREPARE:   
 				begin 
 					next_state = S_PULSE_E; 
@@ -261,6 +256,11 @@ module lcd_controller_top (
 				end
             S_DONE:      
 				next_state = S_IDLE; 
+            S_IDLE:
+				if (start) begin 
+					next_state = S_PREPARE; 
+					next_msg_index = 6'd0; 
+				end
             default:     begin next_state = S_WAIT_INIT; next_delay_cnt = 32'd0; next_msg_index = 6'd0; end
         endcase
     end
